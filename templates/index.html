@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>QA Dashboard</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body class="bg-gray-900 text-white">
+
+<div class="p-6">
+  <h1 class="text-3xl font-bold mb-6">QA Dashboard</h1>
+
+  <!-- KPI Cards -->
+  <div class="grid grid-cols-4 gap-4 mb-6">
+    <div class="bg-gray-800 p-4 rounded-xl">
+      <p>Total Tests</p>
+      <h2 id="totalTests" class="text-2xl font-bold">-</h2>
+    </div>
+
+    <div class="bg-gray-800 p-4 rounded-xl">
+      <p>Pass Rate</p>
+      <h2 id="passRate" class="text-2xl font-bold text-green-400">-</h2>
+    </div>
+
+    <div class="bg-gray-800 p-4 rounded-xl">
+      <p>Failures</p>
+      <h2 id="failures" class="text-2xl font-bold text-red-400">-</h2>
+    </div>
+
+    <div class="bg-gray-800 p-4 rounded-xl">
+      <p>Avg Duration</p>
+      <h2 id="avgDuration" class="text-2xl font-bold">-</h2>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="grid grid-cols-2 gap-6 mb-6">
+    <div class="bg-gray-800 p-4 rounded-xl">
+      <h3 class="mb-2">Run Trends</h3>
+      <canvas id="trendChart"></canvas>
+    </div>
+
+    <div class="bg-gray-800 p-4 rounded-xl">
+      <h3 class="mb-2">Area Breakdown</h3>
+      <canvas id="areaChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Tables -->
+  <div class="grid grid-cols-2 gap-6">
+
+    <div class="bg-gray-800 p-4 rounded-xl">
+      <h3 class="mb-2">Slowest Tests</h3>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-400">
+            <th>Test</th>
+            <th>Avg Duration</th>
+          </tr>
+        </thead>
+        <tbody id="slowTests"></tbody>
+      </table>
+    </div>
+
+    <div class="bg-gray-800 p-4 rounded-xl">
+      <h3 class="mb-2">Flaky Tests</h3>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-400">
+            <th>Test</th>
+            <th>Failure %</th>
+          </tr>
+        </thead>
+        <tbody id="flakyTests"></tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const API_BASE = "/api/dashboard";
+
+// ------------------
+// Load Summary
+// ------------------
+async function loadSummary() {
+  const res = await fetch(`${API_BASE}/summary`);
+  const data = await res.json();
+
+  document.getElementById("totalTests").innerText = data.total_tests;
+  document.getElementById("passRate").innerText = data.pass_rate + "%";
+  document.getElementById("failures").innerText = data.failed;
+  document.getElementById("avgDuration").innerText = data.avg_duration + "s";
+}
+
+// ------------------
+// Trends Chart
+// ------------------
+async function loadTrends() {
+  const res = await fetch(`${API_BASE}/trends`);
+  const data = await res.json();
+
+  const labels = data.map(d => d.run_date);
+  const passed = data.map(d => d.passed);
+  const failed = data.map(d => d.failed);
+
+  new Chart(document.getElementById("trendChart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Passed", data: passed, borderColor: "green" },
+        { label: "Failed", data: failed, borderColor: "red" }
+      ]
+    }
+  });
+}
+
+// ------------------
+// Area Chart
+// ------------------
+async function loadArea() {
+  const res = await fetch(`${API_BASE}/area-breakdown`);
+  const data = await res.json();
+
+  const labels = data.map(d => d.area);
+  const values = data.map(d => d.failed);
+
+  new Chart(document.getElementById("areaChart"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "Failures",
+        data: values
+      }]
+    }
+  });
+}
+
+// ------------------
+// Slow Tests Table
+// ------------------
+async function loadSlowTests() {
+  const res = await fetch(`${API_BASE}/slow-tests`);
+  const data = await res.json();
+
+  const table = document.getElementById("slowTests");
+  table.innerHTML = "";
+
+  data.forEach(t => {
+    table.innerHTML += `
+      <tr>
+        <td class="py-1">${t.test_name}</td>
+        <td>${t.avg_duration}s</td>
+      </tr>
+    `;
+  });
+}
+
+// ------------------
+// Flaky Tests Table
+// ------------------
+async function loadFlakyTests() {
+  const res = await fetch(`${API_BASE}/flaky-tests`);
+  const data = await res.json();
+
+  const table = document.getElementById("flakyTests");
+  table.innerHTML = "";
+
+  data.forEach(t => {
+    table.innerHTML += `
+      <tr>
+        <td class="py-1">${t.test_name}</td>
+        <td class="text-red-400">${t.failure_rate}%</td>
+      </tr>
+    `;
+  });
+}
+
+// ------------------
+// Init
+// ------------------
+async function init() {
+  await loadSummary();
+  await loadTrends();
+  await loadArea();
+  await loadSlowTests();
+  await loadFlakyTests();
+}
+
+init();
+</script>
+
+</body>
+</html>
