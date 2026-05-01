@@ -157,25 +157,25 @@ def defects():
 @app.route("/api/insights")
 def insights():
     conn = get_conn()
-    cursor = conn.cursor
+    cur = conn.cursor(row_factory=dict_row)
 
     from services.insights import generate_insights
 
-    cursor.execute("SELECT area, COUNT(*) FROM defects GROUP BY area")
-    defects = [{"area": r[0], "count": r[1]} for r in cursor.fetchall()]
+    cur.execute("SELECT area, COUNT(*) FROM defects GROUP BY area")
+    defects = [{"area": r[0], "count": r[1]} for r in cur.fetchall()]
 
-    cursor.execute("""
+    cur.execute("""
         SELECT tc.area,
-               SUM(CASE WHEN tr.status='fail' THEN 1 ELSE 0 END) * 1.0 / COUNT(*)
-        FROM test_results tr
-        JOIN test_cases tc ON tr.test_case_id = tc.id
+               SUM(CASE WHEN tr.status='failed' THEN 1 ELSE 0 END) * 1.0 / COUNT(*)
+        FROM test_case_results tr
+        JOIN test_cases tc ON tr.test_name = tc.name
         GROUP BY tc.area
     """)
-    fail_rates = [{"area": r[0], "fail_rate": float(r[1])} for r in cursor.fetchall()]
+    fail_rates = [{"area": r[0], "fail_rate": float(r[1])} for r in cur.fetchall()]
 
-    result = generate_insights(defects, fail_rates, [])
+    data = generate_insights(defects, fail_rates, [])
 
-    return jsonify(result)
+    return jsonify(data)
 
 
 @app.route("/")
