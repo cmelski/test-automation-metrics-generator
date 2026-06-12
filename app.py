@@ -193,8 +193,8 @@ def slow_tests(run_id):
 # =========================================================
 # FLAKY TESTS (PER RUN)
 # =========================================================
-@app.route("/api/dashboard/flaky-tests/<int:run_id>")
-def flaky_tests(run_id):
+@app.route("/api/dashboard/flaky-tests/<build_version>")
+def flaky_tests(build_version):
     conn = get_conn()
     cur = conn.cursor()
 
@@ -205,19 +205,20 @@ def flaky_tests(run_id):
                ROUND(
                    COUNT(*) FILTER (WHERE status = 'failed') * 100.0 / COUNT(*), 2
                ) AS failure_rate
-        FROM test_case_results
-        WHERE run_id = %s
+        FROM test_case_results tcr
+        JOIN test_runs tr ON tr.id = tcr.run_id
+        WHERE tr.build_version = %s
         GROUP BY test_name
-        HAVING COUNT(*) > 3
+        HAVING COUNT(*) FILTER (WHERE status = 'failed') >= 3
         ORDER BY failure_rate DESC
         LIMIT 10
-    """, (run_id,))
+        """, (build_version,))
 
     data = cur.fetchall()
+    print(data)
     conn.close()
 
-    return jsonify(data)
-
+    return jsonify([dict(row) for row in data])
 
 # =========================================================
 # INSIGHTS (OPTIONAL - STILL WORKS)

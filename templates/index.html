@@ -93,11 +93,12 @@
       <h3 class="mb-2">Flaky Tests</h3>
       <table class="w-full text-sm">
         <thead>
-          <tr class="text-left text-gray-400">
-            <th>Test</th>
-            <th>Failure %</th>
-          </tr>
-        </thead>
+  <tr class="text-left text-gray-400">
+    <th class="px-4">Test</th>
+    <th class="px-4"># of Runs</th>
+    <th class="px-4">Failure %</th>
+  </tr>
+</thead>
         <tbody id="flakyTests"></tbody>
       </table>
     </div>
@@ -175,7 +176,7 @@ async function loadAllDashboards(runId, buildVersion) {
   await loadTrends(buildVersion);
   await loadArea(runId);
   await loadSlowTests(runId);
-  await loadFlakyTests(runId);
+  await loadFlakyTests(buildVersion);
 }
 
 /* SUMMARY */
@@ -258,9 +259,12 @@ async function loadSlowTests(runId) {
   });
 }
 
-async function loadFlakyTests(runId) {
-  const res = await fetch(`${API_BASE}/flaky-tests/${runId}`);
+async function loadFlakyTests(buildVersion) {
+  const res = await fetch(`${API_BASE}/flaky-tests/${buildVersion}`);
   const data = await res.json();
+
+
+  console.log("FLAKY DATA =", data);
 
   const table = document.getElementById("flakyTests");
   table.innerHTML = "";
@@ -269,6 +273,7 @@ async function loadFlakyTests(runId) {
     table.innerHTML += `
       <tr>
         <td class="py-1">${t.test_name}</td>
+        <td style="text-align: center;" class="py-1">${t.total_runs}</td>
         <td class="text-red-400">${t.failure_rate}%</td>
       </tr>
     `;
