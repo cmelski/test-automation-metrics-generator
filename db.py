@@ -79,6 +79,11 @@ def create_table():
                 );
                 """)
 
+            cur.execute("""
+                ALTER TABLE test_case_results
+                ADD COLUMN IF NOT EXISTS trace_id VARCHAR(250);
+                """)
+
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS defects (

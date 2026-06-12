@@ -4,10 +4,7 @@
   <meta charset="UTF-8">
   <title>QA Dashboard</title>
 
-  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
@@ -16,8 +13,24 @@
 <div class="p-6">
   <h1 class="text-3xl font-bold mb-6">QA Dashboard</h1>
 
+  <!-- Filters -->
+  <div class="mb-6 grid grid-cols-2 gap-4">
+    <select id="buildSelect" class="text-black p-2 rounded">
+      <option value="">Select Build Version</option>
+    </select>
+
+    <select id="runSelect" class="text-black p-2 rounded" disabled>
+      <option value="">Select Run</option>
+    </select>
+  </div>
+
   <!-- KPI Cards -->
   <div class="grid grid-cols-4 gap-4 mb-6">
+    <div class="bg-gray-800 p-4 rounded-xl">
+      <p>Build Version</p>
+      <h2 id="buildVersion" class="text-2xl font-bold text-green-400">-</h2>
+    </div>
+
     <div class="bg-gray-800 p-4 rounded-xl">
       <p>Total Tests</p>
       <h2 id="totalTests" class="text-2xl font-bold">-</h2>
@@ -33,23 +46,31 @@
       <h2 id="failures" class="text-2xl font-bold text-red-400">-</h2>
     </div>
 
-    <div class="bg-gray-800 p-4 rounded-xl">
+    <div class="bg-gray-800 p-4 rounded-xl col-span-4">
       <p>Avg Duration</p>
       <h2 id="avgDuration" class="text-2xl font-bold">-</h2>
     </div>
   </div>
 
-  <!-- Charts -->
+  <!-- Charts GRID (FIXED STRUCTURE) -->
   <div class="grid grid-cols-2 gap-6 mb-6">
-    <div class="bg-gray-800 p-4 rounded-xl">
+
+    <!-- Trends -->
+    <div class="bg-gray-800 p-4 rounded-xl h-80">
       <h3 class="mb-2">Run Trends</h3>
-      <canvas id="trendChart"></canvas>
+      <div class="relative h-64">
+        <canvas id="trendChart"></canvas>
+      </div>
     </div>
 
-    <div class="bg-gray-800 p-4 rounded-xl">
+    <!-- Area -->
+    <div class="bg-gray-800 p-4 rounded-xl h-80">
       <h3 class="mb-2">Area Breakdown</h3>
-      <canvas id="areaChart"></canvas>
+      <div class="relative h-64">
+        <canvas id="areaChart"></canvas>
+      </div>
     </div>
+
   </div>
 
   <!-- Tables -->
@@ -87,31 +108,100 @@
 <script>
 const API_BASE = "/api/dashboard";
 
-// ------------------
-// Load Summary
-// ------------------
-async function loadSummary() {
-  const res = await fetch(`${API_BASE}/summary`);
-  const data = await res.json();
+let trendChart = null;
+let areaChart = null;
 
-  document.getElementById("totalTests").innerText = data.total_tests;
-  document.getElementById("passRate").innerText = data.pass_rate + "%";
-  document.getElementById("failures").innerText = data.failed;
-  document.getElementById("avgDuration").innerText = data.avg_duration + "s";
+let selectedBuild = null;
+let selectedRun = null;
+
+/* INIT */
+async function init() {
+  await loadBuilds();
+}
+init();
+
+/* BUILD DROPDOWN */
+async function loadBuilds() {
+  const res = await fetch(`${API_BASE}/builds`);
+  const builds = await res.json();
+
+  const buildSelect = document.getElementById("buildSelect");
+  buildSelect.innerHTML = `<option value="">Select Build Version</option>`;
+
+  builds.forEach(b => {
+    buildSelect.innerHTML += `<option value="${b}">${b}</option>`;
+  });
+
+  buildSelect.addEventListener("change", onBuildChange);
 }
 
-// ------------------
-// Trends Chart
-// ------------------
-async function loadTrends() {
-  const res = await fetch(`${API_BASE}/trends`);
+/* BUILD CHANGE */
+async function onBuildChange(e) {
+  selectedBuild = e.target.value;
+
+  resetDashboard();
+
+  if (!selectedBuild) return;
+
+  const res = await fetch(`${API_BASE}/runs/${selectedBuild}`);
+  const runs = await res.json();
+
+  const runSelect = document.getElementById("runSelect");
+  runSelect.disabled = false;
+  runSelect.innerHTML = `<option value="">Select Run</option>`;
+
+  runs.forEach(r => {
+    runSelect.innerHTML += `
+      <option value="${r.id}">
+        ${r.run_date} (${r.run_scope})
+      </option>`;
+  });
+
+  runSelect.addEventListener("change", onRunChange);
+}
+
+/* RUN CHANGE */
+async function onRunChange(e) {
+  selectedRun = e.target.value;
+
+  if (!selectedRun || !selectedBuild) return;
+
+  await loadAllDashboards(selectedRun, selectedBuild);
+}
+
+/* LOAD ALL */
+async function loadAllDashboards(runId, buildVersion) {
+  await loadSummary(runId);
+  await loadTrends(buildVersion);
+  await loadArea(runId);
+  await loadSlowTests(runId);
+  await loadFlakyTests(runId);
+}
+
+/* SUMMARY */
+async function loadSummary(runId) {
+  const res = await fetch(`${API_BASE}/summary/${runId}`);
+  const data = await res.json();
+
+  document.getElementById("buildVersion").innerText = data.build_version || "-";
+  document.getElementById("totalTests").innerText = data.total_tests || "-";
+  document.getElementById("passRate").innerText = (data.pass_rate || 0) + "%";
+  document.getElementById("failures").innerText = data.failed || "-";
+  document.getElementById("avgDuration").innerText = (data.avg_duration || 0) + "s";
+}
+
+/* TRENDS */
+async function loadTrends(buildVersion) {
+  const res = await fetch(`${API_BASE}/trends/${buildVersion}`);
   const data = await res.json();
 
   const labels = data.map(d => d.run_date);
-  const passed = data.map(d => d.passed);
-  const failed = data.map(d => d.failed);
+  const passed = data.map(d => Number(d.passed || 0));
+  const failed = data.map(d => Number(d.failed || 0));
 
-  new Chart(document.getElementById("trendChart"), {
+  if (trendChart) trendChart.destroy();
+
+  trendChart = new Chart(document.getElementById("trendChart"), {
     type: "line",
     data: {
       labels,
@@ -119,37 +209,40 @@ async function loadTrends() {
         { label: "Passed", data: passed, borderColor: "green" },
         { label: "Failed", data: failed, borderColor: "red" }
       ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false
     }
   });
 }
 
-// ------------------
-// Area Chart
-// ------------------
-async function loadArea() {
-  const res = await fetch(`${API_BASE}/area-breakdown`);
+/* AREA */
+async function loadArea(runId) {
+  const res = await fetch(`${API_BASE}/area-breakdown/${runId}`);
   const data = await res.json();
 
   const labels = data.map(d => d.area);
-  const values = data.map(d => d.failed);
+  const values = data.map(d => Number(d.failed || 0));
 
-  new Chart(document.getElementById("areaChart"), {
+  if (areaChart) areaChart.destroy();
+
+  areaChart = new Chart(document.getElementById("areaChart"), {
     type: "bar",
     data: {
       labels,
-      datasets: [{
-        label: "Failures",
-        data: values
-      }]
+      datasets: [{ label: "Failures", data: values }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false
     }
   });
 }
 
-// ------------------
-// Slow Tests Table
-// ------------------
-async function loadSlowTests() {
-  const res = await fetch(`${API_BASE}/slow-tests`);
+/* TABLES */
+async function loadSlowTests(runId) {
+  const res = await fetch(`${API_BASE}/slow-tests/${runId}`);
   const data = await res.json();
 
   const table = document.getElementById("slowTests");
@@ -165,11 +258,8 @@ async function loadSlowTests() {
   });
 }
 
-// ------------------
-// Flaky Tests Table
-// ------------------
-async function loadFlakyTests() {
-  const res = await fetch(`${API_BASE}/flaky-tests`);
+async function loadFlakyTests(runId) {
+  const res = await fetch(`${API_BASE}/flaky-tests/${runId}`);
   const data = await res.json();
 
   const table = document.getElementById("flakyTests");
@@ -185,18 +275,21 @@ async function loadFlakyTests() {
   });
 }
 
-// ------------------
-// Init
-// ------------------
-async function init() {
-  await loadSummary();
-  await loadTrends();
-  await loadArea();
-  await loadSlowTests();
-  await loadFlakyTests();
-}
+/* RESET */
+function resetDashboard() {
+  document.getElementById("buildVersion").innerText = "-";
+  document.getElementById("totalTests").innerText = "-";
+  document.getElementById("passRate").innerText = "-";
+  document.getElementById("failures").innerText = "-";
+  document.getElementById("avgDuration").innerText = "-";
 
-init();
+  document.getElementById("runSelect").innerHTML =
+    `<option value="">Select Run</option>`;
+  document.getElementById("runSelect").disabled = true;
+
+  document.getElementById("slowTests").innerHTML = "";
+  document.getElementById("flakyTests").innerHTML = "";
+}
 </script>
 
 </body>
